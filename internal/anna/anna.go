@@ -5,6 +5,7 @@ import (
 	"net/url"
 
 	"regexp"
+	"strconv"
 	"strings"
 
 	"encoding/json"
@@ -181,13 +182,13 @@ func FindBook(query string) ([]*Book, error) {
 	return bookListParsed, nil
 }
 
-func (b *Book) Download(secretKey, folderPath string) error {
+func (b *Book) Download(secretKey, folderPath string, pathIndex, domainIndex int) error {
 	apiURL := fmt.Sprintf(AnnasDownloadEndpointFormat, env.DefaultAnnasBaseURL)
 	params := url.Values{}
 	params.Set("md5", b.Hash)
 	params.Set("key", secretKey)
-	params.Set("path_index", "0")
-	params.Set("domain_index", "0")
+	params.Set("path_index", strconv.Itoa(pathIndex))
+	params.Set("domain_index", strconv.Itoa(domainIndex))
 	apiURL = apiURL + "?" + params.Encode()
 
 	resp, err := http.Get(apiURL)

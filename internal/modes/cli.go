@@ -86,6 +86,15 @@ func StartCLI() {
 			bookHash := args[0]
 			filename := args[1]
 
+			pathIndex, err := cmd.Flags().GetInt("path-index")
+			if err != nil {
+				return fmt.Errorf("failed to read path-index flag: %w", err)
+			}
+			domainIndex, err := cmd.Flags().GetInt("domain-index")
+			if err != nil {
+				return fmt.Errorf("failed to read domain-index flag: %w", err)
+			}
+
 			ext := filepath.Ext(filename)
 			if ext == "" {
 				return fmt.Errorf("filename must include an extension (e.g., .pdf, .epub)")
@@ -112,7 +121,7 @@ func StartCLI() {
 				Format: format,
 			}
 
-			err = book.Download(env.SecretKey, env.DownloadPath)
+			err = book.Download(env.SecretKey, env.DownloadPath, pathIndex, domainIndex)
 			if err != nil {
 				l.Error("Download command failed",
 					zap.String("bookHash", bookHash),
@@ -134,6 +143,8 @@ func StartCLI() {
 			return nil
 		},
 	}
+	downloadCmd.Flags().Int("path-index", 0, "Collection path index for fast downloads")
+	downloadCmd.Flags().Int("domain-index", 0, "Fast download server index")
 
 	mcpCmd := &cobra.Command{
 		Use:   "mcp",

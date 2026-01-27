@@ -68,7 +68,7 @@ func DownloadTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallTo
 		Format: format,
 	}
 
-	err = book.Download(secretKey, downloadPath)
+	err = book.Download(secretKey, downloadPath, 0, 0)
 	if err != nil {
 		l.Error("Download command failed",
 			zap.String("bookHash", params.Arguments.BookHash),
