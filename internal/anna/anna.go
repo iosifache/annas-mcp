@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 
+	"regexp"
 	"strings"
 
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/PuerkitoBio/goquery"
 	colly "github.com/gocolly/colly/v2"
 	"github.com/iosifache/annas-mcp/internal/env"
 	"github.com/iosifache/annas-mcp/internal/logger"
@@ -20,7 +22,7 @@ import (
 )
 
 const (
-	AnnasSearchEndpointFormat   = "https://{}/search?q=%s"
+	AnnasSearchEndpointFormat   = "https://%s/search?q=%s"
 	AnnasDownloadEndpointFormat = "https://{}/dyn/api/fast_download.json?md5=%s&key=%s"
 )
 
@@ -65,6 +67,16 @@ func extractMetaInformation(meta string) (language, format, size string) {
 	return language, format, size
 }
 
+func extractFormatFromFilename(filename string) string {
+	re := regexp.MustCompile(`(?i)\.(epub|pdf|mobi|azw3|azw|djvu|cbz|cbr|rtf|txt|docx?|fb2|lit)\b`)
+	match := re.FindStringSubmatch(filename)
+	if len(match) < 2 {
+		return ""
+	}
+
+	return strings.ToUpper(match[1])
+}
+
 func FindBook(query string) ([]*Book, error) {
 	l := logger.GetLogger()
 
@@ -74,45 +86,83 @@ func FindBook(query string) ([]*Book, error) {
 
 	bookList := make([]*colly.HTMLElement, 0)
 
-	c.OnHTML("a[href^='/md5/']", func(e *colly.HTMLElement) {
-		// Only process the first link (the cover image link), not the duplicate title link
-		if e.Attr("class") == "custom-a block mr-2 sm:mr-4 hover:opacity-80" {
-			bookList = append(bookList, e)
-		}
+	c.OnHTML("div.js-aarecord-list-outer > div", func(e *colly.HTMLElement) {
+		// Collect result items to avoid processing duplicate md5 links per result.
+		bookList = append(bookList, e)
 	})
 
 	c.OnRequest(func(r *colly.Request) {
 		l.Info("Visiting URL", zap.String("url", r.URL.String()))
 	})
 
-	env, err := env.GetEnv()
+	c.OnError(func(r *colly.Response, err error) {
+		status := 0
+		if r != nil {
+			status = r.StatusCode
+		}
+		l.Warn("Search request failed",
+			zap.Int("status", status),
+			zap.Error(err),
+		)
+	})
+
+	envVars, err := env.GetEnv()
 	if err != nil {
 		return nil, err
 	}
 
-	annasSearchEndpoint := fmt.Sprintf(AnnasSearchEndpointFormat, env.AnnasBaseURL)
+	annasSearchEndpoint := fmt.Sprintf(AnnasSearchEndpointFormat, envVars.AnnasBaseURL)
 	fullURL := fmt.Sprintf(annasSearchEndpoint, url.QueryEscape(query))
-	c.Visit(fullURL)
+	if err := c.Visit(fullURL); err != nil {
+		l.Warn("Search visit failed", zap.Error(err))
+		return nil, err
+	}
 	c.Wait()
 
 	bookListParsed := make([]*Book, 0)
 	for _, e := range bookList {
-		bookInfoDiv := e.DOM.Parent().Find("div.max-w-full")
+		titleCandidates := e.DOM.Find("a[href^='/md5/']")
+		if titleCandidates.Length() == 0 {
+			continue
+		}
+		titleLink := titleCandidates.FilterFunction(func(_ int, s *goquery.Selection) bool {
+			return strings.TrimSpace(s.Text()) != ""
+		}).First()
+		if titleLink.Length() == 0 {
+			titleLink = titleCandidates.First()
+		}
+		title := strings.TrimSpace(titleLink.Text())
 
-		title := bookInfoDiv.Find("a[href^='/md5/']").Text()
-
-		authorsRaw := bookInfoDiv.Find("a[href^='/search'] span.icon-\\[mdi--user-edit\\]").Parent().Text()
+		authorsSelection := e.DOM.Find("a[href^='/search?q='] span.icon-\\[mdi--user-edit\\]").First()
+		if authorsSelection.Length() == 0 {
+			authorsSelection = e.DOM.Find("span.icon-\\[mdi--user-edit\\]").First()
+		}
+		authorsRaw := authorsSelection.Parent().Text()
 		authors := strings.TrimSpace(authorsRaw)
 
-		publisherRaw := bookInfoDiv.Find("a[href^='/search'] span.icon-\\[mdi--company\\]").Parent().Text()
+		publisherSelection := e.DOM.Find("a[href^='/search?q='] span.icon-\\[mdi--company\\]").First()
+		if publisherSelection.Length() == 0 {
+			publisherSelection = e.DOM.Find("span.icon-\\[mdi--company\\]").First()
+		}
+		publisherRaw := publisherSelection.Parent().Text()
 		publisher := strings.TrimSpace(publisherRaw)
 
-		meta := bookInfoDiv.Find("div.text-gray-800").Text()
+		meta := e.DOM.Find("div.text-gray-800").First().Text()
 
 		language, format, size := extractMetaInformation(meta)
+		if format == "" {
+			filenameLine := strings.TrimSpace(e.DOM.Find("div.font-mono").First().Text())
+			format = extractFormatFromFilename(filenameLine)
+		}
 
-		link := e.Attr("href")
+		link, ok := titleLink.Attr("href")
+		if !ok || link == "" {
+			continue
+		}
 		hash := strings.TrimPrefix(link, "/md5/")
+		if strings.Contains(hash, "/") {
+			hash = strings.SplitN(hash, "/", 2)[0]
+		}
 
 		book := &Book{
 			Language:  language,
