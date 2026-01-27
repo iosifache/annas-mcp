@@ -23,7 +23,7 @@ import (
 
 const (
 	AnnasSearchEndpointFormat   = "https://%s/search?q=%s"
-	AnnasDownloadEndpointFormat = "https://{}/dyn/api/fast_download.json?md5=%s&key=%s"
+	AnnasDownloadEndpointFormat = "https://%s/dyn/api/fast_download.json"
 )
 
 func extractMetaInformation(meta string) (language, format, size string) {
@@ -182,13 +182,13 @@ func FindBook(query string) ([]*Book, error) {
 }
 
 func (b *Book) Download(secretKey, folderPath string) error {
-	env, err := env.GetEnv()
-	if err != nil {
-		return err
-	}
-
-	annasDownloadEndpoint := fmt.Sprintf(AnnasDownloadEndpointFormat, env.AnnasBaseURL)
-	apiURL := fmt.Sprintf(annasDownloadEndpoint, b.Hash, secretKey)
+	apiURL := fmt.Sprintf(AnnasDownloadEndpointFormat, env.DefaultAnnasBaseURL)
+	params := url.Values{}
+	params.Set("md5", b.Hash)
+	params.Set("key", secretKey)
+	params.Set("path_index", "0")
+	params.Set("domain_index", "0")
+	apiURL = apiURL + "?" + params.Encode()
 
 	resp, err := http.Get(apiURL)
 	if err != nil {
