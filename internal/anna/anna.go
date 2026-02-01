@@ -20,8 +20,9 @@ import (
 )
 
 const (
-	AnnasSearchEndpointFormat   = "https://{}/search?q=%s"
-	AnnasDownloadEndpointFormat = "https://{}/dyn/api/fast_download.json?md5=%s&key=%s"
+	// content=book_any forces server-side rendering of results (required for scraping)
+	AnnasSearchEndpointFormat   = "https://%s/search?q=%s&content=book_any"
+	AnnasDownloadEndpointFormat = "https://%s/dyn/api/fast_download.json?md5=%s&key=%s"
 )
 
 func extractMetaInformation(meta string) (language, format, size string) {
@@ -70,6 +71,7 @@ func FindBook(query string) ([]*Book, error) {
 
 	c := colly.NewCollector(
 		colly.Async(true),
+		colly.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
 	)
 
 	bookList := make([]*colly.HTMLElement, 0)

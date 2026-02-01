@@ -8,7 +8,8 @@ import (
 	"go.uber.org/zap"
 )
 
-const DefaultAnnasBaseURL = "annas-archive.li"
+// annas-archive.org was suspended in Jan 2026; .pm is currently working
+const DefaultAnnasBaseURL = "annas-archive.pm"
 
 type Env struct {
 	SecretKey    string `json:"secret"`
