@@ -1,6 +1,6 @@
 # Anna's Archive MCP Server (and CLI Tool)
 
-[An MCP server](https://modelcontextprotocol.io/introduction) and CLI tool for searching and downloading documents from [Anna's Archive](https://annas-archive.li)
+[An MCP server](https://modelcontextprotocol.io/introduction) and CLI tool for searching and downloading documents from [Anna's Archive](https://annas-archive.li), with optional automatic selection of a mirror reported as healthy by the public [open-slum monitor](https://open-slum.org/).
 
 > [!NOTE]
 > Notwithstanding prevailing public sentiment regarding Anna's Archive, the platform serves as a comprehensive repository for automated retrieval of documents released under permissive licensing frameworks (including Creative Commons publications and public domain materials). This software does not endorse unauthorized acquisition of copyrighted content and should be regarded solely as a utility. Users are urged to respect the intellectual property rights of authors and acknowledge the considerable effort invested in document creation.
@@ -32,9 +32,12 @@ If using the project as an MCP server, you also need an MCP client, such as [Cla
 
 Optionally, you can set:
 
-- `ANNAS_BASE_URL`: The base URL of the Anna's Archive mirror to use (defaults to `annas-archive.li`).
+- `ANNAS_BASE_URL`: The Anna mirror to use (defaults to `annas-archive.li`). When automatic mirror discovery is enabled, this becomes the fallback mirror.
+- `ANNAS_AUTO_BASE_URL`: Set to `true` to discover the best available Anna mirror automatically from [The Shadow Library Uptime Monitor](https://open-slum.org/).
 
 These variables can also be stored in an `.env` file in the folder containing the binary.
+
+By default, the tool uses `ANNAS_BASE_URL`, or the built-in default mirror when `ANNAS_BASE_URL` is not set. Automatic discovery is opt-in: when `ANNAS_AUTO_BASE_URL=true`, the tool reads the public status page, ranks discovered Anna mirror candidates by recent health and latency, probes them locally, and uses the best reachable mirror. If discovery or probing fails, the tool falls back to `ANNAS_BASE_URL`, then to the built-in default mirror.
 
 HTTP requests default to a 1 hour timeout. For CLI usage, override this with `--timeout`, for example:
 
@@ -56,7 +59,8 @@ If you plan to use the tool for its MCP server functionality, you need to integr
     "args": ["mcp"],
     "env": {
         "ANNAS_SECRET_KEY": "feedfacecafebeef",
-        "ANNAS_DOWNLOAD_PATH": "/Users/iosifache/Downloads"
+        "ANNAS_DOWNLOAD_PATH": "/Users/iosifache/Downloads",
+        "ANNAS_BASE_URL": "annas-archive.li"
     }
 }
 ```
@@ -73,15 +77,6 @@ If you plan to use the tool for its MCP server functionality, you need to integr
 
 ## Anna's Archive Mirrors
 
-Anna's Archive has multiple mirrors, which may be innactive at times due to various reasons. Below is a list of known mirrors and their status as of January 2025:
+Anna's Archive has multiple mirrors, and their availability can change over time. By default, this project uses `ANNAS_BASE_URL`, or `annas-archive.li` when `ANNAS_BASE_URL` is not set.
 
-| Mirror                                           | Type     | Status    |
-| ------------------------------------------------ | -------- | --------- |
-| [`annas-archive.li`](https://annas-archive.li)   | Official | Active    |
-| [`annas-archive.pm`](https://annas-archive.pm)   | Official | Active    |
-| [`annas-archive.in`](https://annas-archive.in)   | Official | Active    |
-| [`annas-archive.org`](https://annas-archive.org) | Official | Innactive |
-
-Alternatively, use [The Shadow Library Uptime Monitor](https://open-slum.org) to find statuses or alternative mirrors.
-
-This project defaults to `annas-archive.li`. If that mirror is not working for you, please set the `ANNAS_BASE_URL` environment variable to one of the other mirrors.
+If you want the tool to choose a mirror automatically, set `ANNAS_AUTO_BASE_URL=true`. In this mode, the tool checks [The Shadow Library Uptime Monitor](https://open-slum.org), dynamically discovers Anna mirror candidates from the public status page, ranks them by recent health and latency, and confirms reachability locally before using one. Set `ANNAS_BASE_URL` as a fallback for environments where automatic discovery may fail.

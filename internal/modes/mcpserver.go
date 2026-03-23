@@ -270,10 +270,13 @@ func StartMCPServer(defaultTimeout time.Duration) {
 	l := logger.GetLogger()
 	defer l.Sync()
 
+	annasBaseURL := env.GetAnnasBaseURL()
+
 	serverVersion := version.GetVersion()
 	l.Info("Starting MCP server",
 		zap.String("name", "annas-mcp"),
 		zap.String("version", serverVersion),
+		zap.String("annasBaseURL", annasBaseURL),
 	)
 
 	server := mcp.NewServer("annas-mcp", serverVersion, nil)
