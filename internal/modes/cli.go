@@ -105,6 +105,9 @@ func StartCLI() {
 				l.Error("Failed to get environment variables", zap.Error(err))
 				return fmt.Errorf("failed to get environment: %w", err)
 			}
+			if env.SecretKey == "" || env.DownloadPath == "" {
+				return fmt.Errorf("ANNAS_SECRET_KEY and ANNAS_DOWNLOAD_PATH environment variables must be set for downloads")
+			}
 
 			book := &anna.Book{
 				Hash:   bookHash,
@@ -210,6 +213,9 @@ func StartCLI() {
 			if err != nil {
 				l.Error("Failed to get environment variables", zap.Error(err))
 				return fmt.Errorf("failed to get environment: %w", err)
+			}
+			if env.DownloadPath == "" {
+				return fmt.Errorf("ANNAS_DOWNLOAD_PATH environment variable must be set for downloads")
 			}
 
 			// Lookup paper
