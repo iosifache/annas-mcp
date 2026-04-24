@@ -1,12 +1,13 @@
 package anna
 
 import (
+	"context"
 	"fmt"
 	"net/url"
+	"time"
 
 	"strings"
 	"sync"
-	"time"
 
 	"encoding/json"
 	"errors"
@@ -27,7 +28,6 @@ const (
 	AnnasSearchEndpointFormat   = "https://%s/search?q=%s&content=%s"
 	AnnasSciDBEndpointFormat    = "https://%s/scidb/%s"
 	AnnasDownloadEndpointFormat = "https://%s/dyn/api/fast_download.json?md5=%s&key=%s"
-	HTTPTimeout                 = 30 * time.Second
 	BrowserUserAgent            = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
@@ -351,36 +351,31 @@ func (b *Book) Download(secretKey, folderPath string) error {
 		return fmt.Errorf("failed to get environment: %w", err)
 	}
 
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: HTTPTimeout,
-	}
-
-	// First API call: get download URL
+	// First API call: get the signed download URL. Small JSON
+	// response; a whole-request timeout is appropriate here.
 	apiURL := fmt.Sprintf(AnnasDownloadEndpointFormat, env.AnnasBaseURL, b.Hash, secretKey)
-
 	l.Info("Fetching download URL", zap.String("hash", b.Hash))
 
-	resp, err := client.Get(apiURL)
+	apiClient := &http.Client{Timeout: 30 * time.Second}
+	resp, err := apiClient.Get(apiURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch download URL: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Validate HTTP status code
 	if resp.StatusCode != http.StatusOK {
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 512))
 		if readErr != nil {
 			return fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, resp.Status)
 		}
-		return fmt.Errorf("API request failed with status %d: %s (body: %s)", resp.StatusCode, resp.Status, string(body))
+		return fmt.Errorf("API request failed with status %d: %s (body: %s)",
+			resp.StatusCode, resp.Status, string(body))
 	}
 
 	var apiResp fastDownloadResponse
 	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 		return fmt.Errorf("failed to decode API response: %w", err)
 	}
-
 	if apiResp.DownloadURL == "" {
 		if apiResp.Error != "" {
 			return fmt.Errorf("API error: %s", apiResp.Error)
@@ -388,48 +383,45 @@ func (b *Book) Download(secretKey, folderPath string) error {
 		return errors.New("API returned empty download URL")
 	}
 
-	// Second API call: download the file
+	// Second call: stream the file body with stall-based deadlines.
+	// There is no upper bound on transfer duration — only on periods
+	// of zero progress — so large books over slow links succeed as
+	// long as bytes keep flowing.
 	l.Info("Downloading file", zap.String("url", apiResp.DownloadURL))
-
-	downloadResp, err := client.Get(apiResp.DownloadURL)
+	ctx, downloadResp, body, cleanup, err := stallingGet(
+		context.Background(), apiResp.DownloadURL, BrowserUserAgent,
+		30*time.Second, 60*time.Second,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to download file: %w", err)
 	}
+	defer cleanup()
 	defer downloadResp.Body.Close()
 
-	// Validate download status code
 	if downloadResp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download failed with status %d: %s", downloadResp.StatusCode, downloadResp.Status)
 	}
 
-	// Sanitize filename to prevent path traversal and invalid characters
 	safeTitle := sanitizeFilename(b.Title)
 	if safeTitle == "" {
 		safeTitle = "untitled"
 	}
-
 	format := strings.ToLower(b.Format)
 	if format == "" {
 		format = "bin"
 	}
-
-	filename := safeTitle + "." + format
-	filePath := filepath.Join(folderPath, filename)
+	filePath := filepath.Join(folderPath, safeTitle+"."+format)
 
 	l.Info("Creating file", zap.String("path", filePath))
-
-	// Create the file
 	out, err := os.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
 
-	// Setup cleanup on error
 	success := false
 	defer func() {
 		out.Close()
 		if !success {
-			// Delete partial file on failure
 			if removeErr := os.Remove(filePath); removeErr != nil {
 				l.Warn("Failed to remove partial file",
 					zap.String("path", filePath),
@@ -439,13 +431,14 @@ func (b *Book) Download(secretKey, folderPath string) error {
 		}
 	}()
 
-	// Copy the downloaded content
-	written, err := io.Copy(out, downloadResp.Body)
+	written, err := io.Copy(out, body)
 	if err != nil {
+		if errors.Is(context.Cause(ctx), ErrStalled) {
+			return fmt.Errorf("download stalled after %d bytes: %w", written, ErrStalled)
+		}
 		return fmt.Errorf("failed to write file (wrote %d bytes): %w", written, err)
 	}
 
-	// Sync to disk to ensure data is written
 	if err := out.Sync(); err != nil {
 		return fmt.Errorf("failed to sync file to disk: %w", err)
 	}
@@ -455,7 +448,6 @@ func (b *Book) Download(secretKey, folderPath string) error {
 		zap.String("path", filePath),
 		zap.Int64("bytes", written),
 	)
-
 	return nil
 }
 
@@ -585,36 +577,28 @@ func (p *Paper) Download(folderPath string) error {
 		return fmt.Errorf("failed to get environment: %w", err)
 	}
 
-	// Construct full download URL
 	downloadURL := p.DownloadURL
 	if !strings.HasPrefix(downloadURL, "http") {
 		downloadURL = fmt.Sprintf("https://%s%s", env.AnnasBaseURL, downloadURL)
 	}
 
-	client := &http.Client{
-		Timeout: 2 * HTTPTimeout,
-	}
-
 	l.Info("Downloading paper via SciDB", zap.String("url", downloadURL))
-
-	req, err := http.NewRequest("GET", downloadURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("User-Agent", BrowserUserAgent)
-
-	resp, err := client.Do(req)
+	ctx, resp, body, cleanup, err := stallingGet(
+		context.Background(), downloadURL, BrowserUserAgent,
+		30*time.Second, 60*time.Second,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to download paper: %w", err)
 	}
+	defer cleanup()
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 512))
+		b, readErr := io.ReadAll(io.LimitReader(resp.Body, 512))
 		if readErr != nil {
 			return fmt.Errorf("download failed with status %d: %s", resp.StatusCode, resp.Status)
 		}
-		return fmt.Errorf("download failed with status %d: %s (body: %s)", resp.StatusCode, resp.Status, string(body))
+		return fmt.Errorf("download failed with status %d: %s (body: %s)", resp.StatusCode, resp.Status, string(b))
 	}
 
 	// Infer file extension from Content-Disposition or Content-Type
@@ -634,7 +618,6 @@ func (p *Paper) Download(folderPath string) error {
 		}
 	}
 
-	// Build filename from title or DOI
 	name := p.Title
 	if name == "" {
 		name = p.DOI
@@ -643,11 +626,9 @@ func (p *Paper) Download(folderPath string) error {
 	if safeName == "" {
 		safeName = "paper"
 	}
-	filename := safeName + ext
-	filePath := filepath.Join(folderPath, filename)
+	filePath := filepath.Join(folderPath, safeName+ext)
 
 	l.Info("Creating file", zap.String("path", filePath))
-
 	out, err := os.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
@@ -666,9 +647,12 @@ func (p *Paper) Download(folderPath string) error {
 		}
 	}()
 
-	written, err := io.Copy(out, resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to write file (wrote %d bytes): %w", written, err)
+	written, copyErr := io.Copy(out, body)
+	if copyErr != nil {
+		if errors.Is(context.Cause(ctx), ErrStalled) {
+			return fmt.Errorf("paper download stalled after %d bytes: %w", written, ErrStalled)
+		}
+		return fmt.Errorf("failed to write file (wrote %d bytes): %w", written, copyErr)
 	}
 
 	if err := out.Sync(); err != nil {
@@ -680,7 +664,6 @@ func (p *Paper) Download(folderPath string) error {
 		zap.String("path", filePath),
 		zap.Int64("bytes", written),
 	)
-
 	return nil
 }
 
