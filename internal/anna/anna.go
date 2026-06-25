@@ -142,12 +142,8 @@ func FindBook(query string, timeout time.Duration) ([]*Book, error) {
 		)
 	})
 
-	env, err := env.GetEnv()
-	if err != nil {
-		return nil, err
-	}
-
-	fullURL := fmt.Sprintf(AnnasSearchEndpointFormat, env.AnnasBaseURL, url.QueryEscape(query), "book_any")
+	annasBaseURL := env.GetAnnasBaseURL()
+	fullURL := fmt.Sprintf(AnnasSearchEndpointFormat, annasBaseURL, url.QueryEscape(query), "book_any")
 
 	if err := c.Visit(fullURL); err != nil {
 		l.Error("Failed to visit search URL", zap.String("url", fullURL), zap.Error(err))
@@ -264,12 +260,8 @@ func FindArticle(query string, timeout time.Duration) ([]*Paper, error) {
 		)
 	})
 
-	env, err := env.GetEnv()
-	if err != nil {
-		return nil, err
-	}
-
-	fullURL := fmt.Sprintf(AnnasSearchEndpointFormat, env.AnnasBaseURL, url.QueryEscape(query), "journal")
+	annasBaseURL := env.GetAnnasBaseURL()
+	fullURL := fmt.Sprintf(AnnasSearchEndpointFormat, annasBaseURL, url.QueryEscape(query), "journal")
 
 	if err := c.Visit(fullURL); err != nil {
 		l.Error("Failed to visit article search URL", zap.String("url", fullURL), zap.Error(err))
@@ -348,10 +340,7 @@ func FindArticle(query string, timeout time.Duration) ([]*Paper, error) {
 func (b *Book) Download(secretKey, folderPath string, timeout time.Duration) error {
 	l := logger.GetLogger()
 
-	env, err := env.GetEnv()
-	if err != nil {
-		return fmt.Errorf("failed to get environment: %w", err)
-	}
+	annasBaseURL := env.GetAnnasBaseURL()
 
 	// Create HTTP client with timeout
 	client := &http.Client{
@@ -359,7 +348,7 @@ func (b *Book) Download(secretKey, folderPath string, timeout time.Duration) err
 	}
 
 	// First API call: get download URL
-	apiURL := fmt.Sprintf(AnnasDownloadEndpointFormat, env.AnnasBaseURL, b.Hash, secretKey)
+	apiURL := fmt.Sprintf(AnnasDownloadEndpointFormat, annasBaseURL, b.Hash, secretKey)
 
 	l.Info("Fetching download URL", zap.String("hash", b.Hash))
 
@@ -464,10 +453,7 @@ func (b *Book) Download(secretKey, folderPath string, timeout time.Duration) err
 func LookupDOI(doi string, timeout time.Duration) (*Paper, error) {
 	l := logger.GetLogger()
 
-	env, err := env.GetEnv()
-	if err != nil {
-		return nil, err
-	}
+	annasBaseURL := env.GetAnnasBaseURL()
 
 	paper := &Paper{DOI: doi}
 
@@ -501,7 +487,7 @@ func LookupDOI(doi string, timeout time.Duration) (*Paper, error) {
 		)
 	})
 
-	scidbURL := fmt.Sprintf(AnnasSciDBEndpointFormat, env.AnnasBaseURL, doi)
+	scidbURL := fmt.Sprintf(AnnasSciDBEndpointFormat, annasBaseURL, doi)
 	paper.PageURL = scidbURL
 
 	l.Info("Looking up DOI", zap.String("url", scidbURL))
@@ -563,7 +549,7 @@ func LookupDOI(doi string, timeout time.Duration) (*Paper, error) {
 		l.Warn("Failed to fetch paper details", zap.String("hash", paper.Hash), zap.Error(err))
 	})
 
-	md5URL := fmt.Sprintf("https://%s/md5/%s", env.AnnasBaseURL, paper.Hash)
+	md5URL := fmt.Sprintf("https://%s/md5/%s", annasBaseURL, paper.Hash)
 	l.Info("Fetching paper details", zap.String("url", md5URL))
 
 	if err := detailCollector.Visit(md5URL); err != nil {
@@ -584,15 +570,12 @@ func (p *Paper) Download(folderPath string, timeout time.Duration) error {
 		return errors.New("no download URL available for this paper")
 	}
 
-	env, err := env.GetEnv()
-	if err != nil {
-		return fmt.Errorf("failed to get environment: %w", err)
-	}
+	annasBaseURL := env.GetAnnasBaseURL()
 
 	// Construct full download URL
 	downloadURL := p.DownloadURL
 	if !strings.HasPrefix(downloadURL, "http") {
-		downloadURL = fmt.Sprintf("https://%s%s", env.AnnasBaseURL, downloadURL)
+		downloadURL = fmt.Sprintf("https://%s%s", annasBaseURL, downloadURL)
 	}
 
 	client := &http.Client{

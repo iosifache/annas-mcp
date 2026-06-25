@@ -18,12 +18,20 @@ type Env struct {
 	AnnasBaseURL string `json:"annas_base_url"`
 }
 
+func GetAnnasBaseURL() string {
+	annasBaseURL := os.Getenv("ANNAS_BASE_URL")
+	if annasBaseURL == "" {
+		return DefaultAnnasBaseURL
+	}
+	return annasBaseURL
+}
+
 func GetEnv() (*Env, error) {
 	l := logger.GetLogger()
 
 	secretKey := os.Getenv("ANNAS_SECRET_KEY")
 	downloadPath := os.Getenv("ANNAS_DOWNLOAD_PATH")
-	annasBaseURL := os.Getenv("ANNAS_BASE_URL")
+	annasBaseURL := GetAnnasBaseURL()
 	if secretKey == "" || downloadPath == "" {
 		err := errors.New("ANNAS_SECRET_KEY and ANNAS_DOWNLOAD_PATH environment variables must be set")
 
@@ -40,10 +48,6 @@ func GetEnv() (*Env, error) {
 
 	if !filepath.IsAbs(downloadPath) {
 		return nil, fmt.Errorf("ANNAS_DOWNLOAD_PATH must be an absolute path, got: %s", downloadPath)
-	}
-
-	if annasBaseURL == "" {
-		annasBaseURL = DefaultAnnasBaseURL
 	}
 
 	return &Env{

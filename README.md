@@ -19,17 +19,16 @@
 
 ## Requirements
 
-If you plan to use only the CLI tool, you need:
+Search works without any required environment variables.
+
+Downloads require:
 
 - [A donation to Anna's Archive](https://annas-archive.li/donate), which grants JSON API access
 - [An API key](https://annas-archive.li/faq#api)
-
-If using the project as an MCP server, you also need an MCP client, such as [Claude Desktop](https://claude.ai/download).
-
-The environment should contain two variables:
-
 - `ANNAS_SECRET_KEY`: The Anna's Archive API key.
 - `ANNAS_DOWNLOAD_PATH`: The path where the documents should be downloaded.
+
+If using the project as an MCP server, you also need an MCP client, such as [Claude Desktop](https://claude.ai/download).
 
 Optionally, you can set:
 
