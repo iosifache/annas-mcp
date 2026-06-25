@@ -2,7 +2,9 @@ package modes
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/iosifache/annas-mcp/internal/anna"
 	"github.com/iosifache/annas-mcp/internal/env"
@@ -12,14 +14,31 @@ import (
 	"go.uber.org/zap"
 )
 
+var defaultMCPTimeout = anna.DefaultHTTPTimeout
+
+func timeoutFromSeconds(seconds int) (time.Duration, error) {
+	if seconds == 0 {
+		return defaultMCPTimeout, nil
+	}
+	if seconds < 0 {
+		return 0, fmt.Errorf("timeout_seconds must be greater than zero")
+	}
+	return time.Duration(seconds) * time.Second, nil
+}
+
 func BookSearchTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[BookSearchParams]) (*mcp.CallToolResultFor[any], error) {
 	l := logger.GetLogger()
+
+	timeout, err := timeoutFromSeconds(params.Arguments.TimeoutSeconds)
+	if err != nil {
+		return nil, err
+	}
 
 	l.Info("Book search command called",
 		zap.String("query", params.Arguments.Query),
 	)
 
-	books, err := anna.FindBook(params.Arguments.Query)
+	books, err := anna.FindBook(params.Arguments.Query, timeout)
 	if err != nil {
 		l.Error("Book search command failed",
 			zap.String("query", params.Arguments.Query),
@@ -55,6 +74,11 @@ func BookSearchTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.Call
 func BookDownloadTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[BookDownloadParams]) (*mcp.CallToolResultFor[any], error) {
 	l := logger.GetLogger()
 
+	timeout, err := timeoutFromSeconds(params.Arguments.TimeoutSeconds)
+	if err != nil {
+		return nil, err
+	}
+
 	l.Info("Download command called",
 		zap.String("bookHash", params.Arguments.BookHash),
 		zap.String("title", params.Arguments.Title),
@@ -77,7 +101,7 @@ func BookDownloadTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.Ca
 		Format: format,
 	}
 
-	err = book.Download(secretKey, downloadPath)
+	err = book.Download(secretKey, downloadPath, timeout)
 	if err != nil {
 		l.Error("Download command failed",
 			zap.String("bookHash", params.Arguments.BookHash),
@@ -103,6 +127,11 @@ func ArticleSearchTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.C
 	l := logger.GetLogger()
 	query := params.Arguments.Query
 
+	timeout, err := timeoutFromSeconds(params.Arguments.TimeoutSeconds)
+	if err != nil {
+		return nil, err
+	}
+
 	l.Info("Article search command called", zap.String("query", query))
 
 	// Auto-detect if input is a DOI (starts with "10.")
@@ -110,7 +139,7 @@ func ArticleSearchTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.C
 		// DOI lookup
 		l.Info("Detected DOI format, performing DOI lookup", zap.String("doi", query))
 
-		paper, err := anna.LookupDOI(query)
+		paper, err := anna.LookupDOI(query, timeout)
 		if err != nil {
 			l.Error("DOI lookup failed",
 				zap.String("doi", query),
@@ -131,7 +160,7 @@ func ArticleSearchTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.C
 	// Article keyword search
 	l.Info("Performing article keyword search", zap.String("query", query))
 
-	papers, err := anna.FindArticle(query)
+	papers, err := anna.FindArticle(query, timeout)
 	if err != nil {
 		l.Error("Article search failed",
 			zap.String("query", query),
@@ -167,6 +196,11 @@ func ArticleSearchTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.C
 func ArticleDownloadTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[ArticleDownloadParams]) (*mcp.CallToolResultFor[any], error) {
 	l := logger.GetLogger()
 
+	timeout, err := timeoutFromSeconds(params.Arguments.TimeoutSeconds)
+	if err != nil {
+		return nil, err
+	}
+
 	l.Info("Download paper command called", zap.String("doi", params.Arguments.DOI))
 
 	env, err := env.GetEnv()
@@ -175,7 +209,7 @@ func ArticleDownloadTool(ctx context.Context, cc *mcp.ServerSession, params *mcp
 		return nil, err
 	}
 
-	paper, err := anna.LookupDOI(params.Arguments.DOI)
+	paper, err := anna.LookupDOI(params.Arguments.DOI, timeout)
 	if err != nil {
 		l.Error("DOI lookup failed for download",
 			zap.String("doi", params.Arguments.DOI),
@@ -191,7 +225,7 @@ func ArticleDownloadTool(ctx context.Context, cc *mcp.ServerSession, params *mcp
 			Title:  paper.Title,
 			Format: "pdf",
 		}
-		if err := book.Download(env.SecretKey, env.DownloadPath); err != nil {
+		if err := book.Download(env.SecretKey, env.DownloadPath, timeout); err != nil {
 			l.Warn("Fast download failed, trying SciDB download",
 				zap.String("doi", params.Arguments.DOI),
 				zap.Error(err),
@@ -210,7 +244,7 @@ func ArticleDownloadTool(ctx context.Context, cc *mcp.ServerSession, params *mcp
 	}
 
 	// Fall back to SciDB download
-	if err := paper.Download(env.DownloadPath); err != nil {
+	if err := paper.Download(env.DownloadPath, timeout); err != nil {
 		l.Error("SciDB download failed",
 			zap.String("doi", params.Arguments.DOI),
 			zap.Error(err),
@@ -230,7 +264,9 @@ func ArticleDownloadTool(ctx context.Context, cc *mcp.ServerSession, params *mcp
 	}, nil
 }
 
-func StartMCPServer() {
+func StartMCPServer(defaultTimeout time.Duration) {
+	defaultMCPTimeout = defaultTimeout
+
 	l := logger.GetLogger()
 	defer l.Sync()
 
@@ -245,17 +281,21 @@ func StartMCPServer() {
 	server.AddTools(
 		mcp.NewServerTool("book_search", "Search Anna's Archive for books by title, author, or topic. Returns book metadata including MD5 hash for downloading.", BookSearchTool, mcp.Input(
 			mcp.Property("query", mcp.Description("Search query for books (e.g., title, author, topic)")),
+			mcp.Property("timeout_seconds", mcp.Description("Optional HTTP timeout in seconds; defaults to the server timeout")),
 		)),
 		mcp.NewServerTool("book_download", "Download a book by its MD5 hash from search results. Requires ANNAS_SECRET_KEY and ANNAS_DOWNLOAD_PATH environment variables.", BookDownloadTool, mcp.Input(
 			mcp.Property("hash", mcp.Description("MD5 hash of the book to download")),
 			mcp.Property("title", mcp.Description("Book title, used for filename")),
 			mcp.Property("format", mcp.Description("Book format, for example pdf or epub")),
+			mcp.Property("timeout_seconds", mcp.Description("Optional HTTP timeout in seconds; defaults to the server timeout")),
 		)),
 		mcp.NewServerTool("article_search", "Search for academic articles/papers by DOI or keywords. Auto-detects if input is a DOI (starts with '10.') or a search term. Returns article metadata including DOI and hash.", ArticleSearchTool, mcp.Input(
 			mcp.Property("query", mcp.Description("DOI (e.g., '10.1038/nature12345') or search keywords for articles")),
+			mcp.Property("timeout_seconds", mcp.Description("Optional HTTP timeout in seconds; defaults to the server timeout")),
 		)),
 		mcp.NewServerTool("article_download", "Download an academic article/paper by its DOI. Looks up the paper, then downloads via fast download (if available) or SciDB. Requires ANNAS_DOWNLOAD_PATH environment variable.", ArticleDownloadTool, mcp.Input(
 			mcp.Property("doi", mcp.Description("DOI of the article to download (e.g., '10.1038/nature12345')")),
+			mcp.Property("timeout_seconds", mcp.Description("Optional HTTP timeout in seconds; defaults to the server timeout")),
 		)),
 	)
 

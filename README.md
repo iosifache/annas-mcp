@@ -37,6 +37,14 @@ Optionally, you can set:
 
 These variables can also be stored in an `.env` file in the folder containing the binary.
 
+HTTP requests default to a 1 hour timeout. For CLI usage, override this with `--timeout`, for example:
+
+```bash
+annas-mcp --timeout 1h book-download abc123def456 "my-book.pdf"
+```
+
+For MCP usage, tools accept an optional `timeout_seconds` parameter, for example `3600` for 1 hour.
+
 ## Setup
 
 Download the appropriate binary from [the GitHub Releases section](https://github.com/iosifache/annas-mcp/releases).

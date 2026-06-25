@@ -25,6 +25,8 @@ func StartCLI() {
 		l.Warn("Error loading .env file", zap.Error(err))
 	}
 
+	timeout := anna.DefaultHTTPTimeout
+
 	rootCmd := &cobra.Command{
 		Use:   "annas-mcp",
 		Short: "Anna's Archive MCP CLI",
@@ -33,11 +35,18 @@ func StartCLI() {
 			DisableDefaultCmd: true,
 		},
 		Version: version.GetVersion(),
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if timeout <= 0 {
+				return fmt.Errorf("timeout must be greater than zero")
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
 	}
 	rootCmd.SetVersionTemplate("{{.Version}}\n")
+	rootCmd.PersistentFlags().DurationVar(&timeout, "timeout", anna.DefaultHTTPTimeout, "HTTP request timeout, e.g. 30s, 10m, 1h")
 
 	bookSearchCmd := &cobra.Command{
 		Use:   "book-search [query]",
@@ -47,7 +56,7 @@ func StartCLI() {
 			query := args[0]
 			l.Info("Book search command called", zap.String("query", query))
 
-			books, err := anna.FindBook(query)
+			books, err := anna.FindBook(query, timeout)
 			if err != nil {
 				l.Error("Book search command failed",
 					zap.String("query", query),
@@ -112,7 +121,7 @@ func StartCLI() {
 				Format: format,
 			}
 
-			err = book.Download(env.SecretKey, env.DownloadPath)
+			err = book.Download(env.SecretKey, env.DownloadPath, timeout)
 			if err != nil {
 				l.Error("Download command failed",
 					zap.String("bookHash", bookHash),
@@ -149,7 +158,7 @@ func StartCLI() {
 				// DOI lookup
 				l.Info("Detected DOI format, performing DOI lookup", zap.String("doi", query))
 
-				paper, err := anna.LookupDOI(query)
+				paper, err := anna.LookupDOI(query, timeout)
 				if err != nil {
 					l.Error("DOI lookup failed",
 						zap.String("doi", query),
@@ -167,7 +176,7 @@ func StartCLI() {
 			// Article keyword search
 			l.Info("Performing article keyword search", zap.String("query", query))
 
-			papers, err := anna.FindArticle(query)
+			papers, err := anna.FindArticle(query, timeout)
 			if err != nil {
 				l.Error("Article search failed",
 					zap.String("query", query),
@@ -213,7 +222,7 @@ func StartCLI() {
 			}
 
 			// Lookup paper
-			paper, err := anna.LookupDOI(doi)
+			paper, err := anna.LookupDOI(doi, timeout)
 			if err != nil {
 				l.Error("DOI lookup failed for download",
 					zap.String("doi", doi),
@@ -229,7 +238,7 @@ func StartCLI() {
 					Title:  paper.Title,
 					Format: "pdf",
 				}
-				if err := book.Download(env.SecretKey, env.DownloadPath); err == nil {
+				if err := book.Download(env.SecretKey, env.DownloadPath, timeout); err == nil {
 					fmt.Printf("Article downloaded successfully to: %s\n", env.DownloadPath)
 					l.Info("Article downloaded via fast download",
 						zap.String("doi", doi),
@@ -244,7 +253,7 @@ func StartCLI() {
 			}
 
 			// Fall back to SciDB download
-			if err := paper.Download(env.DownloadPath); err != nil {
+			if err := paper.Download(env.DownloadPath, timeout); err != nil {
 				l.Error("SciDB download failed",
 					zap.String("doi", doi),
 					zap.Error(err),
@@ -269,7 +278,7 @@ func StartCLI() {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Exit CLI mode and start MCP server
-			StartMCPServer()
+			StartMCPServer(timeout)
 			return nil
 		},
 	}

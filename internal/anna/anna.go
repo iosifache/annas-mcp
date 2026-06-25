@@ -27,7 +27,7 @@ const (
 	AnnasSearchEndpointFormat   = "https://%s/search?q=%s&content=%s"
 	AnnasSciDBEndpointFormat    = "https://%s/scidb/%s"
 	AnnasDownloadEndpointFormat = "https://%s/dyn/api/fast_download.json?md5=%s&key=%s"
-	HTTPTimeout                 = 30 * time.Second
+	DefaultHTTPTimeout          = time.Hour
 	BrowserUserAgent            = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
@@ -103,7 +103,7 @@ func sanitizeFilename(filename string) string {
 	return safe
 }
 
-func FindBook(query string) ([]*Book, error) {
+func FindBook(query string, timeout time.Duration) ([]*Book, error) {
 	l := logger.GetLogger()
 
 	// Use mutex to protect concurrent slice access
@@ -115,6 +115,7 @@ func FindBook(query string) ([]*Book, error) {
 		// Set realistic User-Agent to avoid DDoS-Guard blocking
 		colly.UserAgent(BrowserUserAgent),
 	)
+	c.SetRequestTimeout(timeout)
 
 	c.OnHTML("a[href^='/md5/']", func(e *colly.HTMLElement) {
 		// Only process the first link (the cover image link), not the duplicate title link
@@ -224,7 +225,7 @@ func FindBook(query string) ([]*Book, error) {
 	return bookListParsed, nil
 }
 
-func FindArticle(query string) ([]*Paper, error) {
+func FindArticle(query string, timeout time.Duration) ([]*Paper, error) {
 	l := logger.GetLogger()
 
 	// Use mutex to protect concurrent slice access
@@ -236,6 +237,7 @@ func FindArticle(query string) ([]*Paper, error) {
 		// Set realistic User-Agent to avoid DDoS-Guard blocking
 		colly.UserAgent(BrowserUserAgent),
 	)
+	c.SetRequestTimeout(timeout)
 
 	c.OnHTML("a[href^='/md5/']", func(e *colly.HTMLElement) {
 		// Only process the first link (the cover image link), not the duplicate title link
@@ -323,12 +325,12 @@ func FindArticle(query string) ([]*Paper, error) {
 		}
 
 		paper := &Paper{
-			Title:     title,
-			Authors:   authors,
-			Journal:   journal,
-			Size:      size,
-			Hash:      hash,
-			PageURL:   e.Request.AbsoluteURL(link),
+			Title:   title,
+			Authors: authors,
+			Journal: journal,
+			Size:    size,
+			Hash:    hash,
+			PageURL: e.Request.AbsoluteURL(link),
 		}
 
 		paperListParsed = append(paperListParsed, paper)
@@ -343,7 +345,7 @@ func FindArticle(query string) ([]*Paper, error) {
 	return paperListParsed, nil
 }
 
-func (b *Book) Download(secretKey, folderPath string) error {
+func (b *Book) Download(secretKey, folderPath string, timeout time.Duration) error {
 	l := logger.GetLogger()
 
 	env, err := env.GetEnv()
@@ -353,7 +355,7 @@ func (b *Book) Download(secretKey, folderPath string) error {
 
 	// Create HTTP client with timeout
 	client := &http.Client{
-		Timeout: HTTPTimeout,
+		Timeout: timeout,
 	}
 
 	// First API call: get download URL
@@ -459,7 +461,7 @@ func (b *Book) Download(secretKey, folderPath string) error {
 	return nil
 }
 
-func LookupDOI(doi string) (*Paper, error) {
+func LookupDOI(doi string, timeout time.Duration) (*Paper, error) {
 	l := logger.GetLogger()
 
 	env, err := env.GetEnv()
@@ -474,6 +476,7 @@ func LookupDOI(doi string) (*Paper, error) {
 	searchCollector := colly.NewCollector(
 		colly.UserAgent(BrowserUserAgent),
 	)
+	searchCollector.SetRequestTimeout(timeout)
 
 	searchCollector.OnHTML("a[href^='/md5/']", func(e *colly.HTMLElement) {
 		if paper.Hash != "" {
@@ -515,6 +518,7 @@ func LookupDOI(doi string) (*Paper, error) {
 	detailCollector := colly.NewCollector(
 		colly.UserAgent(BrowserUserAgent),
 	)
+	detailCollector.SetRequestTimeout(timeout)
 
 	detailCollector.OnHTML("title", func(e *colly.HTMLElement) {
 		title := e.Text
@@ -573,7 +577,7 @@ func LookupDOI(doi string) (*Paper, error) {
 	return paper, nil
 }
 
-func (p *Paper) Download(folderPath string) error {
+func (p *Paper) Download(folderPath string, timeout time.Duration) error {
 	l := logger.GetLogger()
 
 	if p.DownloadURL == "" {
@@ -592,7 +596,7 @@ func (p *Paper) Download(folderPath string) error {
 	}
 
 	client := &http.Client{
-		Timeout: 2 * HTTPTimeout,
+		Timeout: timeout,
 	}
 
 	l.Info("Downloading paper via SciDB", zap.String("url", downloadURL))
