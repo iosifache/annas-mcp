@@ -1,6 +1,6 @@
 # Anna's Archive MCP Server (and CLI Tool)
 
-[An MCP server](https://modelcontextprotocol.io/introduction) and CLI tool for searching and downloading documents from [Anna's Archive](https://annas-archive.li), with optional automatic selection of a mirror reported as healthy by the public [open-slum monitor](https://open-slum.org/).
+[An MCP server](https://modelcontextprotocol.io/introduction) and CLI tool for searching and downloading documents from [Anna's Archive](https://annas-archive.li), with optional automatic selection of a mirror reported as healthy by [SLUM](https://open-slum.org/).
 
 > [!NOTE]
 > Notwithstanding prevailing public sentiment regarding Anna's Archive, the platform serves as a comprehensive repository for automated retrieval of documents released under permissive licensing frameworks (including Creative Commons publications and public domain materials). This software does not endorse unauthorized acquisition of copyrighted content and should be regarded solely as a utility. Users are urged to respect the intellectual property rights of authors and acknowledge the considerable effort invested in document creation.
@@ -33,7 +33,7 @@ If using the project as an MCP server, you also need an MCP client, such as [Cla
 Optionally, you can set:
 
 - `ANNAS_BASE_URL`: The Anna mirror to use (defaults to `annas-archive.li`). When automatic mirror discovery is enabled, this becomes the fallback mirror.
-- `ANNAS_AUTO_BASE_URL`: Set to `true` to discover the best available Anna mirror automatically from [The Shadow Library Uptime Monitor](https://open-slum.org/).
+- `ANNAS_AUTO_BASE_URL`: Set to `true` to discover the best available Anna mirror automatically from [SLUM](https://open-slum.org/).
 
 These variables can also be stored in an `.env` file in the folder containing the binary.
 
@@ -79,4 +79,4 @@ If you plan to use the tool for its MCP server functionality, you need to integr
 
 Anna's Archive has multiple mirrors, and their availability can change over time. By default, this project uses `ANNAS_BASE_URL`, or `annas-archive.li` when `ANNAS_BASE_URL` is not set.
 
-If you want the tool to choose a mirror automatically, set `ANNAS_AUTO_BASE_URL=true`. In this mode, the tool checks [The Shadow Library Uptime Monitor](https://open-slum.org), dynamically discovers Anna mirror candidates from the public status page, ranks them by recent health and latency, and confirms reachability locally before using one. Set `ANNAS_BASE_URL` as a fallback for environments where automatic discovery may fail.
+If you want the tool to choose a mirror automatically, set `ANNAS_AUTO_BASE_URL=true`. In this mode, the tool checks [SLUM](https://open-slum.org/), dynamically discovers Anna mirror candidates from the public status page, ranks them by recent health and latency, and confirms reachability locally before using one. Set `ANNAS_BASE_URL` as a fallback for environments where automatic discovery may fail.

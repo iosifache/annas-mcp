@@ -30,7 +30,7 @@ func StartCLI() {
 	rootCmd := &cobra.Command{
 		Use:   "annas-mcp",
 		Short: "Anna's Archive MCP CLI",
-		Long:  "A command-line interface for searching and downloading books from Anna's Archive.",
+		Long:  "A command-line interface for searching and downloading books from Anna's Archive. Automatic mirror discovery uses SLUM (https://open-slum.org/).",
 		CompletionOptions: cobra.CompletionOptions{
 			DisableDefaultCmd: true,
 		},
