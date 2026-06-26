@@ -15,7 +15,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const DefaultAnnasBaseURL = "annas-archive.li"
+const DefaultAnnasBaseURL = "annas-archive.gl"
 
 type Env struct {
 	SecretKey    string `json:"secret"`

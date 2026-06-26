@@ -1,6 +1,6 @@
 # Anna's Archive MCP Server (and CLI Tool)
 
-[An MCP server](https://modelcontextprotocol.io/introduction) and CLI tool for searching and downloading documents (books and articles) from [Anna's Archive](https://annas-archive.li), with optional automatic selection of a mirror reported as healthy by [SLUM](https://open-slum.org/).
+[An MCP server](https://modelcontextprotocol.io/introduction) and CLI tool for searching and downloading documents (books and articles) from [Anna's Archive](https://annas-archive.gl), with optional automatic selection of a mirror reported as healthy by [SLUM](https://open-slum.org/).
 
 > [!NOTE]
 > Notwithstanding prevailing public sentiment regarding Anna's Archive, the platform serves as a comprehensive repository for automated retrieval of documents released under permissive licensing frameworks (including Creative Commons publications and public domain materials). This software does not endorse unauthorized acquisition of copyrighted content and should be regarded solely as a utility. Users are urged to respect the intellectual property rights of authors and acknowledge the considerable effort invested in document creation.
@@ -14,8 +14,8 @@ Search works without any required environment variables.
 
 Downloads require:
 
-- [A donation to Anna's Archive](https://annas-archive.li/donate), which grants JSON API access
-- [An API key](https://annas-archive.li/faq#api)
+- [A donation to Anna's Archive](https://annas-archive.gl/donate), which grants JSON API access
+- [An API key](https://annas-archive.gl/faq#api)
 - An MCP client, such as [Claude Desktop](https://claude.ai/download), if using the project as an MCP server
 
 ## Setup
@@ -31,7 +31,7 @@ If you plan to use the tool for its MCP server functionality, you need to integr
     "env": {
         "ANNAS_SECRET_KEY": "feedfacecafebeef",
         "ANNAS_DOWNLOAD_PATH": "/Users/iosifache/Downloads",
-        "ANNAS_BASE_URL": "annas-archive.li"
+        "ANNAS_BASE_URL": "annas-archive.gl"
     }
 }
 ```
@@ -49,11 +49,11 @@ Downloads use:
 
 ### Mirror Selection
 
-Anna's Archive has multiple mirrors, and their availability can change over time. By default, this project uses `ANNAS_BASE_URL`, or `annas-archive.li` when `ANNAS_BASE_URL` is not set.
+Anna's Archive has multiple mirrors, and their availability can change over time. By default, this project uses `ANNAS_BASE_URL`, or `annas-archive.gl` when `ANNAS_BASE_URL` is not set.
 
 Optionally, you can set:
 
-- `ANNAS_BASE_URL`: The Anna mirror to use (defaults to `annas-archive.li`). When automatic mirror discovery is enabled, this becomes the fallback mirror.
+- `ANNAS_BASE_URL`: The Anna mirror to use (defaults to `annas-archive.gl`). When automatic mirror discovery is enabled, this becomes the fallback mirror.
 - `ANNAS_AUTO_BASE_URL`: Set to `true` to discover the best available Anna mirror automatically from [SLUM](https://open-slum.org/).
 
 Automatic discovery is opt-in: when `ANNAS_AUTO_BASE_URL=true`, the tool reads the public status page, ranks discovered Anna mirror candidates by recent health and latency, probes them locally, and uses the best reachable mirror. If discovery or probing fails, the tool falls back to `ANNAS_BASE_URL`, then to the built-in default mirror.
